@@ -1,0 +1,17 @@
+# Concert Ticket Benchmark – Numbered Seats
+# Format: BUY <client_id> <seat_id> <request_id>
+
+# INVALID
+BUY user00001 0 00001
+
+# Race condition
+BUY user00002 2 00002
+BUY user00003 2 00003
+
+# Valid ticket
+BUY user00004 4 00004
+BUY user00005 5 00005
+
+# Repeat
+BUY user00002 2 00007
+BUY user00002 6 00008
