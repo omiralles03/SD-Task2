@@ -1,5 +1,3 @@
 pika
 requests
 httpx
-boto3
-botocore
