@@ -10,6 +10,17 @@ resource "aws_instance" "rabbitMQ" {
     volume_type = "gp3"
   }
 
+  user_data = <<-EOF
+              #!/bin/bash
+              apt-get update
+              apt-get install -y docker.io
+              systemctl enable --now docker
+
+              docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:4.0-management-alpine
+
+              docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=user -e POSTGRES_PASSWORD=123 -e POSTGRES_DB=ticket_system postgres:16-alpine
+              EOF
+
   tags = {
     Name = "RabbitMQ EC2"
   }
