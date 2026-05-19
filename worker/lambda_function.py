@@ -1,28 +1,110 @@
-# La Lambda rebrà un JSON (esdeveniment) amb les dades del tiquet i ha de fer:
+import time
+import os
+import json
+import base64
+import psycopg2
+from psycopg2 import IntegrityError
 
-# 1.Artificial Delay (Requisit 4 obligatori): Clavar un time.sleep(0.1) (100 ms) a dins de la lògica abans d'executar el tiquet per simular la passarel·la de pagament.
+# Database connection (Outside the handler to reuse it between executions and be more efficient)
+DB_HOST = os.environ.get("DB_HOST")
+DB_NAME = os.environ.get("DB_NAME")
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
 
-# 2. Connexió a Base de Dades (Punt 3): Connectar-se al PostgreSQL que tenim corrent a la EC2 (necessitaràs les credencials del .env).
+def get_db_connection():
+    return psycopg2.connect(
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
 
-# 3. Lògica de Compra i Concurrència (Punt 2):
+def lambda_handler(event, context):
+    # Start time for metrics
+    start_time = time.time()
+    
+    # Artificial Delay: external payment latency
+    time.sleep(0.1)
+    
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # When AWS reads from RabbitMQ, it sends the messages inside 'rmqMessagesByQueue'
+        # The messages come encoded in Base64.
+        if "rmqMessagesByQueue" in event:
+            for queue_name, messages in event["rmqMessagesByQueue"].items():
+                for msg in messages:
+                    # Decode the message sent by producer.py
+                    decoded_data = base64.b64decode(msg['data']).decode('utf-8')
+                    ticket_data = json.loads(decoded_data)
+                    
+                    process_ticket(cur, conn, ticket_data)
+        else:
+            # Fallback for manual testing sending a direct JSON from the AWS console
+            process_ticket(cur, conn, event)
+            
+        conn.commit()
 
-    # Si el tiquet és Unnumbered, fer un UPDATE restant 1 al total de tiquets disponibles (assegura't que no quedi en negatiu, No overselling).
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Transaction error: {e}")
+        raise e
+        
+    finally:
+        # Metrics: record transaction time
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        if conn:
+            try:
+                cur = conn.cursor()
+                # Save to the database to compute Throughput and Latency later
+                cur.execute("""
+                    INSERT INTO transaction_metrics (start_time, end_time, duration) 
+                    VALUES (to_timestamp(%s), to_timestamp(%s), %s);
+                """, (start_time, end_time, duration))
+                conn.commit()
+            except Exception as metric_err:
+                print(f"Error saving metrics: {metric_err}")
+            finally:
+                cur.close()
+                conn.close()
 
-    # Si és Numbered, fer un INSERT a una taula de seients ocupats. Si el seient ja existeix, controlar l'error per no vendre'l dos cops.
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Processing completed successfully')
+    }
 
-# 4. Mètriques (Punt 9 obligatori): Guardar a una taula de la Base de Dades (o un log) l'hora exacta d'inici i de finalització de cada transacció per 
-# poder calcular després el Throughput real i la Latència (p50, p95, p99).
-
-
-# Esto de aqui ns q porras es habra que mirarlo XD
-
-#2. Configurar la connexió nativa a AWS (Event Source Mapping)
-
-#. Com que el controlador només escala la concurrència des de fora per no saturar la xarxa, has de configurar a la consola d'AWS 
-# (o afegir-ho al Terraform si t'atreveixes) el connector perquè AWS Lambda llegeixi directament de la nostra cua de RabbitMQ.
-
-# El nom de la cua és ticket_queue.
-
-# S'ha de configurar amb un Batch size gran perquè AWS buidi RabbitMQ en ràfegues quan hi hagi pics de càrrega.
-
-# Posa't amb el fitxer a la carpeta worker/ i digue'm quan ho tinguis per fer el push a la branca main, ajuntar-ho tot i llançar el test de estrès definitiu!"
+# Purchase and concurrency logic
+def process_ticket(cur, conn, ticket_data):
+    ticket_type = ticket_data.get("type")
+    request_id = ticket_data.get("request_id") # Key for idempotency
+    
+    if ticket_type == "unnumbered":
+        # We do an UPDATE. The condition "available > 0" ensures no overselling
+        cur.execute("""
+            UPDATE unnumbered_tickets 
+            SET available = available - 1 
+            WHERE id = 1 AND available > 0 
+            RETURNING available;
+        """)
+        result = cur.fetchone()
+        if not result:
+            print(f"[{request_id}] Denied: No unnumbered tickets left.")
+            
+    elif ticket_type == "numbered":
+        seat_id = ticket_data.get("seat_id")
+        try:
+            # We do an INSERT. If the seat already exists, it will raise an IntegrityError 
+            # assuming the seat_id column has a UNIQUE constraint in PostgreSQL.
+            cur.execute("""
+                INSERT INTO occupied_seats (seat_id, request_id) 
+                VALUES (%s, %s);
+            """, (seat_id, request_id))
+        except IntegrityError:
+            # We handle the error to avoid double-selling and rollback the failed insert
+            conn.rollback()
+            print(f"[{request_id}] Denied: Seat {seat_id} is already sold.")
