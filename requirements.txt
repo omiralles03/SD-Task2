@@ -2,6 +2,7 @@ pika
 requests
 httpx
 boto3
+boto3-stubs[lambda]
 psycopg2-binary
 numpy
 python-dotenv
