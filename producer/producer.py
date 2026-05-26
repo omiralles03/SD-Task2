@@ -5,6 +5,8 @@ import pika
 import json
 import sys
 
+# Reads benchmarks and sends petitions to the queue
+
 def start_producer(benchmark, num_consumers):
     try:
         connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBIT_HOST))
