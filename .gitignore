@@ -11,3 +11,4 @@ venv/
 .terraform.lock.hcl
 
 *.bak
+*.zip
