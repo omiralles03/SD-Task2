@@ -9,3 +9,5 @@ venv/
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+
+*.bak
