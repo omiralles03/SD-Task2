@@ -5,10 +5,10 @@ CREATE TABLE IF NOT EXISTS unnumbered_tickets (
 );
 
 INSERT INTO unnumbered_tickets (total_tickets, sold_tickets)
-SELECT 100000, 0 WHERE NOT EXISTS (SELECT 1 FORM unnumbered_tickets);
+SELECT 100000, 0 WHERE NOT EXISTS (SELECT 1 FROM unnumbered_tickets);
 
 CREATE TABLE IF NOT EXISTS numbered_tickets (
-    seat_number INT PRIMARY KEY,
+    seat_id INT PRIMARY KEY,
     client_id VARCHAR(50) NOT NULL,
     sold_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
