@@ -1,9 +1,9 @@
-resource "aws_instance" "rabbitMQ_ec2" {
+resource "aws_instance" "workers_ec2" {
   ami           = "ami-091138d0f0d41ff90" # Ubuntu 26.04 LTS
   instance_type = "t3.medium"
   key_name      = "practica"
 
-  vpc_security_group_ids = [aws_security_group.rabbit_sg.id]
+  vpc_security_group_ids = [aws_security_group.workers_sg.id]
 
   root_block_device {
     volume_size = 20 # GB storage
@@ -13,13 +13,10 @@ resource "aws_instance" "rabbitMQ_ec2" {
   user_data = <<-EOF
               #!/bin/bash
               apt-get update
-              apt-get install -y docker.io
-              systemctl enable --now docker
-
-              docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:4.0-management-alpine
+              apt-get install -y python3-pip python3-venv
               EOF
 
   tags = {
-    Name = "RabbitMQ EC2"
+    Name = "Workers-Controller EC2"
   }
 }
