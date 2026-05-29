@@ -1,6 +1,0 @@
-RABBIT_HOST=aws_ip
-DB_HOST=aws_ip
-DB_NAME=
-DB_USER=
-DB_PASSWORD=
-DB_PORT=

@@ -2,6 +2,8 @@ import pika
 import time
 import subprocess
 from common.config import RABBIT_HOST
+import sys
+import json
 
 # Constantly observes the amount of messages that exist in rabbitmq and decides how many lambdas should be executed.
 
@@ -21,6 +23,10 @@ def monitor_and_scale():
     active_workers = []
     curr_workers = 0
 
+    # Variables grafíco
+    recorded_times = []
+    recorded_backlogs = []
+
     try:
         while True:
             active_workers = [p for p in active_workers if p.poll() is None]
@@ -29,6 +35,12 @@ def monitor_and_scale():
             # Check the queue in passive mode and get the backlog
             queue = channel.queue_declare(queue='ticket_queue', durable=True, passive=True)
             backlog = queue.method.message_count
+
+
+            # Registrar el tiempo en cada segundo, haya mensajes o no
+            et = time.perf_counter() - st
+            recorded_times.append(round(et, 2))
+            recorded_backlogs.append(backlog)
 
             # if there are pending messages -> calculate how many workers
             if backlog > 0:
@@ -40,8 +52,6 @@ def monitor_and_scale():
 
                 #  Limit to 40 max concurrency
                 num_workers_needed = max(1, min(int(num_workers) + 1, MAX_WORKERS))
-
-                et = time.perf_counter() - st
 
                 # Log
                 print(f"({et:.2f}s) [Load] Backlog (B): {backlog} | Arrival Rate (λ): {arrival_rate}/s")
@@ -72,8 +82,16 @@ def monitor_and_scale():
         print(" [-] Controller Stopped.")
         for p in active_workers:
             p.terminate()
+            
+        print(" [*] Guardando datos y generando gráfica...")
+        with open('plot_data.json', 'w') as f:
+            json.dump({"times": recorded_times, "backlogs": recorded_backlogs}, f)
+        
+        # Ejecuta automáticamente el script de la gráfica usando el mismo entorno virtual (sys.executable)
+        subprocess.Popen([sys.executable, "plot_backlog.py"])
+
     finally:
         connection.close()
 
 if __name__ == "__main__":
-    monitor_and_scale() 
+    monitor_and_scale()

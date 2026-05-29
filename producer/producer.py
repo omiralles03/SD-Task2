@@ -51,6 +51,8 @@ def start_producer(benchmark, num_consumers):
         print(f" [!] Error: File {benchmark} not found.")
     except Exception as e:
         print(f" [!] Error: {e}")
+        import traceback
+        traceback.print_exc()
         
 
 if __name__ == "__main__":
