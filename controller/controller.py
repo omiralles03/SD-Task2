@@ -1,5 +1,4 @@
 import pika
-import boto3
 import time
 import subprocess
 from common.config import RABBIT_HOST
@@ -14,8 +13,6 @@ MAX_WORKERS = 40
 def monitor_and_scale():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBIT_HOST))
     channel = connection.channel()
-
-    lambda_client = boto3.client('lambda', region_name='us-east-1')
 
     last_backlog = 0 # backlog: pending amount of messages
 
@@ -51,6 +48,8 @@ def monitor_and_scale():
                 print(f"({et:.2f}s) [Scale] Workers needed: {num_workers_needed}.")
                 print(f"({et:.2f}s) [Active] Workers active: {curr_workers_count}.")
 
+                # Avoid creating new processes if all available workers are in use
+                # Avoids saturating the limit of PostgreSQL connections
                 if num_workers_needed > curr_workers_count:
                     workers_to_launch = num_workers_needed - curr_workers_count
                     print(f"({et:.2f}s) [Scale] Workers to launch: {workers_to_launch}.")
